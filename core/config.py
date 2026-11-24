@@ -11,3 +11,5 @@ def zone_for(lon):
     if lon < CENTER_LON + 0.004:
         return "B"
     return "C"
+DEPOT = (CENTER_LAT, CENTER_LON)
+TRUCKS = [{"id": "T1", "capacity": 10}, {"id": "T2", "capacity": 10}]

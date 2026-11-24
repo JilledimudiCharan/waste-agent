@@ -7,26 +7,27 @@ from core.config import (DEFAULT_RATE, COLD_START_UNCERTAINTY,
 def forecast_bin(b: Bin) -> Forecast:
     rs = db.get_readings(b.id, HISTORY_WINDOW)
     if not rs:
-        raise ValueError(f"No readings for {b.id}")
+        return Forecast(bin_id=b.id, fill_now=50.0, rate=DEFAULT_RATE, worst_hours=0.0,
+                        best_hours=0.0, n_readings=0, mode="no-data")
 
-    # use only readings after the last pickup (a big drop in fill)
+    # history restarts after a pickup or a correction
     start = 0
-    for i in range(1, len(rs)):
-        if rs[i].fill < rs[i - 1].fill - 15:
+    for i, r in enumerate(rs):
+        if r.kind in ("pickup", "correction"):
             start = i
     rs = rs[start:]
-
     fill_now = rs[-1].fill
+    span = rs[-1].ts - rs[0].ts
 
-    if len(rs) < 4:                      # not enough history: cold start
+    if len(rs) < 4 or span < 1800:          # not enough history yet
         rate, spread, mode = DEFAULT_RATE, COLD_START_UNCERTAINTY, "cold-start"
-    else:                                # learn the rate from the readings
-        t = np.array([(r.ts - rs[0].ts) / 3600 for r in rs])   # hours
+    else:
+        t = np.array([(r.ts - rs[0].ts) / 3600 for r in rs])
         y = np.array([r.fill for r in rs])
-        slope, intercept = np.polyfit(t, y, 1)                 # best-fit line
+        slope, intercept = np.polyfit(t, y, 1)
         resid = y - (slope * t + intercept)
-        sigma = resid.std(ddof=2)                              # how noisy the data is
-        se = sigma / np.sqrt(((t - t.mean()) ** 2).sum())      # how unsure the slope is
+        sigma = resid.std(ddof=2)
+        se = sigma / np.sqrt(((t - t.mean()) ** 2).sum())
         rate = max(float(slope), 0.1)
         spread = max(2 * se / rate, MIN_UNCERTAINTY)
         mode = "learned"
